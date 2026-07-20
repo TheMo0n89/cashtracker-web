@@ -1,10 +1,11 @@
 import axios from 'axios';
 import { useAuthStore } from '@/store/auth';
 
-const API_URL = '/v1';
+const API_BASE_URL =
+  (process.env.NEXT_PUBLIC_API_URL || '/v1').replace(/\/+$/, '');
 
 export const api = axios.create({
-  baseURL: API_URL,
+  baseURL: API_BASE_URL,
   withCredentials: true, // Crucial for sending/receiving the HTTPOnly refresh token
   headers: {
     'Content-Type': 'application/json',
@@ -74,7 +75,7 @@ api.interceptors.response.use(
 
       try {
         // Attempt to refresh the token using the HTTPOnly cookie
-        const { data } = await axios.post(`${API_URL}/auth/refresh`, {}, {
+        const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
           withCredentials: true, // Must send the cookie
         });
 
