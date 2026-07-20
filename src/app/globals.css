@@ -1,0 +1,191 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-outfit), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --color-background: var(--color-background);
+  --color-surface: var(--color-surface);
+  --color-surface-hover: var(--color-surface-hover);
+  --color-surface-border: var(--color-surface-border);
+  
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-muted: var(--color-text-muted);
+
+  --color-element-bg: var(--color-element-bg);
+  --color-element-bg-hover: var(--color-element-bg-hover);
+  --color-element-border: var(--color-element-border);
+  --color-overlay: var(--color-overlay);
+  
+  --color-glass-bg: var(--color-glass-bg);
+  --color-glass-border: var(--color-glass-border);
+  --color-input-bg: var(--color-input-bg);
+
+  --color-primary: #10b981;
+  --color-primary-hover: #059669;
+  --color-primary-light: rgba(16, 185, 129, 0.15);
+  
+  --color-accent: #6366f1;
+  --color-accent-hover: #4f46e5;
+  --color-accent-light: rgba(99, 102, 241, 0.15);
+  
+  --color-danger: #ef4444;
+  --color-danger-hover: #dc2626;
+  --color-danger-light: rgba(239, 68, 68, 0.15);
+  
+  --color-warning: #f59e0b;
+  --color-warning-hover: #d97706;
+
+  /* Custom Animations */
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-slide-up: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Base resets & theme application */
+@layer base {
+  :root {
+    color-scheme: dark;
+    --color-background: #09090b;
+    --color-surface: #18181b;
+    --color-surface-hover: #27272a;
+    --color-surface-border: #3f3f46;
+    
+    --color-text-primary: #fafafa;
+    --color-text-secondary: #a1a1aa;
+    --color-text-muted: #71717a;
+
+    --color-element-bg: rgba(255, 255, 255, 0.05);
+    --color-element-bg-hover: rgba(255, 255, 255, 0.1);
+    --color-element-border: rgba(255, 255, 255, 0.1);
+    
+    --color-glass-bg: rgba(24, 24, 27, 0.65);
+    --color-glass-border: rgba(255, 255, 255, 0.05);
+
+    --color-input-bg: rgba(255, 255, 255, 0.05);
+    --color-overlay: rgba(0, 0, 0, 0.6);
+  }
+  
+  html.light {
+    color-scheme: light;
+    --color-background: #f8fafc;
+    --color-surface: #ffffff;
+    --color-surface-hover: #f1f5f9;
+    --color-surface-border: #e2e8f0;
+    
+    --color-text-primary: #0f172a;
+    --color-text-secondary: #475569;
+    --color-text-muted: #94a3b8;
+
+    --color-element-bg: rgba(0, 0, 0, 0.04);
+    --color-element-bg-hover: rgba(0, 0, 0, 0.08);
+    --color-element-border: rgba(0, 0, 0, 0.1);
+    
+    --color-glass-bg: rgba(255, 255, 255, 0.75);
+    --color-glass-border: rgba(0, 0, 0, 0.05);
+
+    --color-input-bg: rgba(0, 0, 0, 0.02);
+    --color-overlay: rgba(255, 255, 255, 0.6);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Add a subtle radial gradient background */
+    background-image: radial-gradient(
+      circle at 50% 0%, 
+      rgba(99, 102, 241, 0.05) 0%, 
+      transparent 50%
+    );
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+  }
+}
+
+/* Custom utilities */
+@layer utilities {
+  .glass {
+    background: var(--color-glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--color-glass-border);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+  }
+
+  .hover-scale {
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .hover-scale:hover {
+    transform: scale(1.02);
+  }
+  
+  .active-scale:active {
+    transform: scale(0.97);
+  }
+
+  .text-gradient {
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
+
+/* Master UI Components */
+@layer components {
+  .input-field {
+    @apply w-full bg-[var(--color-input-bg)] border border-[var(--color-element-border)] rounded-xl px-4 py-3 text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all;
+  }
+  
+  .btn-primary {
+    @apply bg-[var(--color-primary)] text-white font-medium rounded-xl px-6 py-3 hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-50 active:scale-95 flex items-center justify-center gap-2;
+  }
+  
+  .btn-secondary {
+    @apply bg-[var(--color-element-bg)] text-[var(--color-text-primary)] font-medium border border-[var(--color-element-border)] rounded-xl px-6 py-3 hover:bg-[var(--color-element-bg-hover)] transition-colors disabled:opacity-50 active:scale-95 flex items-center justify-center gap-2;
+  }
+}
+
+/* Print Styles for PDF Export */
+@media print {
+  body {
+    background-color: white !important;
+    background-image: none !important;
+    color: black !important;
+  }
+  .glass {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: none !important;
+  }
+  nav, header, button, select, input, .no-print {
+    display: none !important;
+  }
+  main, .max-w-6xl {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}
