@@ -1,6 +1,11 @@
 import Link from 'next/link';
 import { ArrowRight, Wallet, TrendingUp, ShieldCheck } from 'lucide-react';
 
+// Force Next.js to include this route in the static build output.
+// Without this, Next.js 15 may skip prerendering the root "/" route
+// when it detects client-side wrappers (ThemeProvider, Providers) in the tree.
+export const dynamic = 'force-static';
+
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden">
