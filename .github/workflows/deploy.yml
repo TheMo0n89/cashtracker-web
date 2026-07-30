@@ -10,6 +10,12 @@ concurrency:
   group: vercel-deploy
   cancel-in-progress: false
 
+# Los IDs del proyecto están en .vercel/repo.json — no son secretos,
+# son identificadores públicos del proyecto en Vercel.
+env:
+  VERCEL_ORG_ID: team_KToUgPxELer3zycCb8qlUnUr
+  VERCEL_PROJECT_ID: prj_QXG4x2VoMAWXyBDDre689DYbjqRX
+
 jobs:
   # ────────────────────────────────────────────────────────────────────────
   # JOB — Build & Deploy to Vercel
@@ -22,24 +28,34 @@ jobs:
       url: ${{ steps.deploy.outputs.deployment_url }}
 
     steps:
-      # ── 1. Checkout ────────────────────────────────────────────────────
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # ── 2. Entorno ─────────────────────────────────────────────────────
       - name: Log environment info
         run: |
           echo "::group::Environment Info"
-          echo "Runner OS     : $RUNNER_OS"
-          echo "Runner Arch   : $RUNNER_ARCH"
-          echo "Git SHA       : $GITHUB_SHA"
-          echo "Git Ref       : $GITHUB_REF"
-          echo "Triggered by  : $GITHUB_ACTOR"
-          echo "Timestamp     : $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          df -h / | tail -1 | awk '{print "Disk free     : "$4}'
+          echo "Runner OS      : $RUNNER_OS"
+          echo "Runner Arch    : $RUNNER_ARCH"
+          echo "Git SHA        : $GITHUB_SHA"
+          echo "Git Ref        : $GITHUB_REF"
+          echo "Triggered by   : $GITHUB_ACTOR"
+          echo "Timestamp      : $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          echo "Vercel Org ID  : $VERCEL_ORG_ID"
+          echo "Vercel Proj ID : $VERCEL_PROJECT_ID"
+          df -h / | tail -1 | awk '{print "Disk free      : "$4}'
           echo "::endgroup::"
 
-      # ── 3. Node.js ─────────────────────────────────────────────────────
+      # Valida que VERCEL_TOKEN está configurado antes de continuar
+      - name: Validate VERCEL_TOKEN secret
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "::error title=Secret Faltante — VERCEL_TOKEN::El secret VERCEL_TOKEN no está configurado en este repositorio."
+            echo "::error::Cómo obtenerlo: Vercel → Account Settings → Tokens → Create Token"
+            echo "::error::Dónde agregarlo: GitHub repo → Settings → Secrets and variables → Actions → New repository secret"
+            exit 1
+          fi
+          echo "::notice::Secret VERCEL_TOKEN detectado correctamente."
+
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
@@ -51,10 +67,9 @@ jobs:
           echo "::group::Toolchain Versions"
           node --version
           npm --version
-          npx vercel --version 2>/dev/null || echo "Vercel CLI: will be installed by npx"
+          npx vercel --version 2>/dev/null || echo "Vercel CLI: se instalará via npx en los pasos siguientes"
           echo "::endgroup::"
 
-      # ── 4. Install ─────────────────────────────────────────────────────
       - name: Install dependencies
         run: |
           echo "::group::npm ci"
@@ -62,102 +77,91 @@ jobs:
           echo "::endgroup::"
           echo "Packages installed: $(ls node_modules | wc -l)"
 
-      # ── 5. Vercel pull (descarga config + env vars de produccion) ───────
+      # ── Paso 1: Pull — descarga config de Vercel (incluye env vars) ────
       - name: Pull Vercel project settings
         id: pull
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          echo "::group::vercel pull"
+          echo "::group::vercel pull --environment=production"
           set +e
           npx vercel pull \
             --yes \
             --environment=production \
-            --token=${{ secrets.VERCEL_TOKEN }} 2>&1 | tee /tmp/vercel_pull.log
+            --token="${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee /tmp/vercel_pull.log
           PULL_EXIT=${PIPESTATUS[0]}
           echo "::endgroup::"
 
           if [ "$PULL_EXIT" -ne 0 ]; then
-            echo "::error title=Vercel Pull Failed::Could not download Vercel project settings. Check VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID secrets."
+            echo "::error title=Vercel Pull Falló (exit $PULL_EXIT)::No se pudo descargar la configuración del proyecto. Verifica VERCEL_TOKEN, VERCEL_ORG_ID y VERCEL_PROJECT_ID."
+            echo "::error::Log completo disponible en el artefacto 'vercel-logs-$GITHUB_SHA' si el job falla."
             exit 1
           fi
 
-          echo "::notice::Vercel project settings downloaded."
+          echo "::notice::Configuración de Vercel descargada."
 
-      # ── 6. Build ───────────────────────────────────────────────────────
+      # ── Paso 2: Build ──────────────────────────────────────────────────
       - name: Build for production
         id: build
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           echo "::group::vercel build --prod"
           set +e
           npx vercel build \
             --prod \
-            --token=${{ secrets.VERCEL_TOKEN }} 2>&1 | tee /tmp/vercel_build.log
+            --token="${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee /tmp/vercel_build.log
           BUILD_EXIT=${PIPESTATUS[0]}
           echo "::endgroup::"
 
           if [ "$BUILD_EXIT" -ne 0 ]; then
-            echo "::error title=Vercel Build Failed::Next.js build failed. See 'vercel build --prod' section above for details."
+            echo "::error title=Vercel Build Falló (exit $BUILD_EXIT)::El build de Next.js falló. Ver grupo 'vercel build --prod' arriba."
             echo "build_status=failed" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
           echo "build_status=success" >> "$GITHUB_OUTPUT"
-          echo "::notice title=Build OK::Next.js production build completed."
+          echo "::notice title=Build OK::Next.js production build completado."
 
-      # ── 7. Upload build log on failure ─────────────────────────────────
-      - name: Upload build logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: vercel-build-logs-${{ github.sha }}
-          path: |
-            /tmp/vercel_pull.log
-            /tmp/vercel_build.log
-          retention-days: 7
-
-      # ── 8. Deploy ──────────────────────────────────────────────────────
+      # ── Paso 3: Deploy ─────────────────────────────────────────────────
       - name: Deploy prebuilt output to Vercel
         id: deploy
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           echo "::group::vercel deploy --prebuilt --prod"
           set +e
-          DEPLOY_OUTPUT=$(npx vercel deploy \
+          npx vercel deploy \
             --prebuilt \
             --prod \
-            --token=${{ secrets.VERCEL_TOKEN }} 2>&1 | tee /tmp/vercel_deploy.log)
+            --token="${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee /tmp/vercel_deploy.log
           DEPLOY_EXIT=${PIPESTATUS[0]}
           echo "::endgroup::"
 
-          # Extraer URL del output
-          DEPLOY_URL=$(grep -oP 'https://[^\s]+\.vercel\.app[^\s]*' /tmp/vercel_deploy.log | tail -1)
+          # Extraer URL del output del CLI
+          DEPLOY_URL=$(grep -oE 'https://[a-zA-Z0-9._-]+\.vercel\.app' /tmp/vercel_deploy.log | tail -1 || echo "")
+
           echo "deployment_url=${DEPLOY_URL:-https://cashtracker-web.vercel.app}" >> "$GITHUB_OUTPUT"
-          echo "deploy_url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+          echo "deploy_url=${DEPLOY_URL}"                                          >> "$GITHUB_OUTPUT"
 
           if [ "$DEPLOY_EXIT" -ne 0 ]; then
-            echo "::error title=Vercel Deploy Failed::Deployment upload failed. See 'vercel deploy' section above."
+            echo "::error title=Vercel Deploy Falló (exit $DEPLOY_EXIT)::El upload a Vercel falló. Ver grupo 'vercel deploy --prebuilt --prod' arriba."
             exit 1
           fi
 
-          echo "::notice title=Deployed!::Production URL: $DEPLOY_URL"
+          if [ -n "$DEPLOY_URL" ]; then
+            echo "::notice title=Deployed!::URL de producción: $DEPLOY_URL"
+          else
+            echo "::notice title=Deployed!::Deploy completado. URL no detectada en el output — revisa Vercel Dashboard."
+          fi
 
-      # ── 9. Upload deploy log on failure ────────────────────────────────
-      - name: Upload deploy log on failure
+      # ── Upload de logs en caso de fallo ────────────────────────────────
+      - name: Upload all logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: vercel-deploy-log-${{ github.sha }}
-          path: /tmp/vercel_deploy.log
+          name: vercel-logs-${{ github.sha }}
+          path: |
+            /tmp/vercel_pull.log
+            /tmp/vercel_build.log
+            /tmp/vercel_deploy.log
           retention-days: 7
 
-      # ── 10. Resumen final ──────────────────────────────────────────────
+      # ── Resumen final ──────────────────────────────────────────────────
       - name: Write job summary
         if: always()
         run: |
@@ -167,14 +171,16 @@ jobs:
             echo "## Vercel Deploy Summary"
             echo ""
             echo "| Campo   | Valor |"
-            echo "|---|---|"
+            echo "|---------|-------|"
             echo "| Commit  | \`$GITHUB_SHA\` |"
             echo "| Rama    | \`$GITHUB_REF_NAME\` |"
-            echo "| Build   | \`${BUILD:-unknown}\` |"
+            echo "| Build   | \`${BUILD:-N/A}\` |"
             if [ -n "$URL" ]; then
               echo "| URL     | [$URL]($URL) |"
+            else
+              echo "| URL     | N/A (ver Vercel Dashboard) |"
             fi
             echo "| Hora    | $(date -u '+%Y-%m-%dT%H:%M:%SZ') |"
             echo ""
-            echo "> Logs completos disponibles en la pestaña **Actions** → este workflow → sección de cada paso."
+            echo "> Si hubo errores, descarga el artefacto **vercel-logs-\`$GITHUB_SHA\`** desde la pestaña Summary."
           } >> "$GITHUB_STEP_SUMMARY"
