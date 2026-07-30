@@ -1,10 +1,12 @@
+'use client';
+
+// La landing page se renderiza en el cliente para garantizar que Next.js
+// la incluya siempre en el output del build. Sin 'use client', Next.js
+// omite silenciosamente la ruta "/" cuando detecta providers client-side
+// (ThemeProvider, Providers) en el árbol del layout — causando 404 en Vercel.
+
 import Link from 'next/link';
 import { ArrowRight, Wallet, TrendingUp, ShieldCheck } from 'lucide-react';
-
-// Force Next.js to include this route in the static build output.
-// Without this, Next.js 15 may skip prerendering the root "/" route
-// when it detects client-side wrappers (ThemeProvider, Providers) in the tree.
-export const dynamic = 'force-static';
 
 export default function Home() {
   return (
