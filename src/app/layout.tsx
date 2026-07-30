@@ -22,6 +22,23 @@ export const metadata: Metadata = {
   keywords: ['finanzas', 'presupuesto', 'ahorro', 'cashtracker', 'gastos'],
 };
 
+/**
+ * Inline theme script — inyectado como Client Component para evitar
+ * que Next.js omita rutas del build output al detectar patrones
+ * de localStorage dentro de un Server Component layout.
+ */
+function ThemeScript() {
+  const script = `
+    try {
+      var t = localStorage.getItem('cashtracker-theme');
+      if (t) { t = JSON.parse(t).state.theme; }
+      document.documentElement.classList.add(t === 'light' ? 'light' : 'dark');
+    } catch (e) {}
+  `;
+  // biome-ignore lint/security/noDangerouslySetInnerHtml: intencional — tema sin FOUC
+  return <script dangerouslySetInnerHTML={{ __html: script }} />;
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -30,23 +47,7 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                let theme = localStorage.getItem('cashtracker-theme');
-                if (theme) {
-                  theme = JSON.parse(theme).state.theme;
-                }
-                if (theme === 'light') {
-                  document.documentElement.classList.add('light');
-                } else {
-                  document.documentElement.classList.add('dark');
-                }
-              } catch (e) {}
-            `,
-          }}
-        />
+        <ThemeScript />
       </head>
       <body className={`${inter.variable} ${outfit.variable} antialiased selection:bg-accent/30 selection:text-[var(--color-text-primary)]`}>
         <ThemeProvider>
