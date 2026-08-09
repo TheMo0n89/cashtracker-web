@@ -155,6 +155,8 @@ jobs:
             --token="${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee /tmp/vercel_build.log
           BUILD_EXIT=${PIPESTATUS[0]}
           echo "::endgroup::"
+          echo "=== VERCEL BUILD LOG ==="
+          cat /tmp/vercel_build.log
           if [ "$BUILD_EXIT" -ne 0 ]; then
             echo "::error title=Build Falló::Ver log de build arriba."
             exit 1
@@ -171,9 +173,11 @@ jobs:
             --prod \
             --token="${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee /tmp/vercel_deploy.log
           DEPLOY_EXIT=${PIPESTATUS[0]}
+          echo "::endgroup::"
+          echo "=== VERCEL DEPLOY LOG ==="
+          cat /tmp/vercel_deploy.log
           DEPLOY_URL=$(grep -oE 'https://[a-zA-Z0-9._-]+\.vercel\.app' /tmp/vercel_deploy.log | tail -1 || echo "")
           echo "deploy_url=${DEPLOY_URL}" >> "$GITHUB_OUTPUT"
-          echo "::endgroup::"
           if [ "$DEPLOY_EXIT" -ne 0 ]; then
             echo "::error title=Deploy Falló::Ver log arriba."
             exit 1
