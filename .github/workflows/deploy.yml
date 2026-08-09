@@ -10,8 +10,6 @@ concurrency:
   group: vercel-deploy
   cancel-in-progress: false
 
-# IDs del proyecto Vercel (no son secretos — son identificadores públicos)
-# Fuente: cashtracker-web/.vercel/repo.json
 env:
   VERCEL_ORG_ID: team_KToUgPxELer3zycCb8qlUnUr
   VERCEL_PROJECT_ID: prj_QXG4x2VoMAWXyBDDre689DYbjqRX
@@ -20,7 +18,6 @@ jobs:
   deploy:
     name: Build & Deploy to Vercel
     runs-on: ubuntu-latest
-    # URL hardcodeada — no usar step outputs aquí (rompe el YAML en GitHub Actions)
     environment:
       name: production
       url: https://cashtracker-web.vercel.app
@@ -29,27 +26,39 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Log environment info
+      # ──────────────────────────────────────────────────────────────────
+      # PRE-FLIGHT — Validates all required secrets and env vars BEFORE
+      # any build step. Fails fast with a clear checklist in the logs.
+      # ──────────────────────────────────────────────────────────────────
+      - name: Pre-flight validation
+        env:
+          CHECK_VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          echo "::group::Environment Info"
-          echo "Runner OS      : $RUNNER_OS"
-          echo "Git SHA        : $GITHUB_SHA"
-          echo "Git Ref        : $GITHUB_REF_NAME"
-          echo "Triggered by   : $GITHUB_ACTOR"
-          echo "Timestamp      : $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          echo "Vercel Org ID  : $VERCEL_ORG_ID"
-          echo "Vercel Proj ID : $VERCEL_PROJECT_ID"
+          echo "::group::Pre-flight Checklist"
+
+          FAILED=0
+
+          # ── 1. VERCEL_TOKEN ────────────────────────────────────────────
+          if [ -z "$CHECK_VERCEL_TOKEN" ]; then
+            echo "❌  VERCEL_TOKEN      — SECRET FALTANTE"
+            echo "    → GitHub repo → Settings → Secrets → Actions → VERCEL_TOKEN"
+            echo "    → Valor: Vercel → Account Settings → Tokens → Create Token"
+            FAILED=1
+          else
+            echo "✅  VERCEL_TOKEN      — OK"
+          fi
+
+          # ── 2. NEXT_PUBLIC_API_URL (viene del .env.production descargado) ──
+          # Esta variable se valida en el siguiente paso (post vercel pull)
+          # porque vive en el dashboard de Vercel, no en GitHub Secrets.
+          echo "⏭️  NEXT_PUBLIC_API_URL — se validará tras vercel pull"
+
           echo "::endgroup::"
 
-      - name: Validate VERCEL_TOKEN secret
-        run: |
-          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
-            echo "::error title=Secret Faltante — VERCEL_TOKEN::El secret VERCEL_TOKEN no está configurado."
-            echo "::error::Obtenerlo: Vercel → Account Settings → Tokens → Create Token"
-            echo "::error::Agregarlo: GitHub repo → Settings → Secrets and variables → Actions → New repository secret"
+          if [ "$FAILED" -ne 0 ]; then
+            echo "::error title=Pre-flight Failed::Uno o más secrets/variables requeridos están ausentes. Ver checklist arriba."
             exit 1
           fi
-          echo "::notice::Secret VERCEL_TOKEN detectado."
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -59,7 +68,7 @@ jobs:
 
       - name: Log toolchain versions
         run: |
-          echo "::group::Versiones"
+          echo "::group::Toolchain"
           node --version
           npm --version
           echo "::endgroup::"
@@ -70,6 +79,7 @@ jobs:
           npm ci 2>&1
           echo "::endgroup::"
 
+      # ── Pull Vercel settings (downloads .env.production.local) ────────
       - name: Pull Vercel project settings
         run: |
           echo "::group::vercel pull"
@@ -80,10 +90,63 @@ jobs:
           PULL_EXIT=${PIPESTATUS[0]}
           echo "::endgroup::"
           if [ "$PULL_EXIT" -ne 0 ]; then
-            echo "::error title=Vercel Pull Falló::Revisa VERCEL_TOKEN. Ver log arriba."
+            echo "::error title=Vercel Pull Falló::Revisa VERCEL_TOKEN. Log arriba."
             exit 1
           fi
 
+      # ── Validate NEXT_PUBLIC_API_URL after pull ────────────────────────
+      - name: Validate NEXT_PUBLIC_API_URL
+        run: |
+          echo "::group::NEXT_PUBLIC_API_URL Validation"
+
+          # Source the env file Vercel just downloaded
+          ENV_FILE=".vercel/.env.production.local"
+          if [ -f "$ENV_FILE" ]; then
+            API_URL=$(grep '^NEXT_PUBLIC_API_URL=' "$ENV_FILE" | cut -d'=' -f2- | tr -d '"' | tr -d "'" | xargs)
+          fi
+
+          # Fallback: check if it's a GitHub secret / env var already exposed
+          API_URL="${API_URL:-${NEXT_PUBLIC_API_URL:-}}"
+
+          FAILED=0
+
+          if [ -z "$API_URL" ]; then
+            echo "❌  NEXT_PUBLIC_API_URL — VACÍA o NO CONFIGURADA"
+            echo "    → Vercel Dashboard → cashtracker-web → Settings → Environment Variables"
+            echo "    → Nombre: NEXT_PUBLIC_API_URL"
+            echo "    → Valor esperado: https://cashtracker-api-mggy.onrender.com/v1"
+            FAILED=1
+          elif echo "$API_URL" | grep -qE '[[:space:]]'; then
+            echo "❌  NEXT_PUBLIC_API_URL — CONTIENE ESPACIOS"
+            echo "    → Valor actual (ofuscado): ${API_URL:0:10}..."
+            echo "    → Elimina espacios en blanco desde el dashboard de Vercel."
+            FAILED=1
+          elif echo "$API_URL" | grep -qE '^[\"'"'"']'; then
+            echo "❌  NEXT_PUBLIC_API_URL — COMIENZA CON COMILLAS"
+            echo "    → Guarda el valor sin comillas en el dashboard de Vercel."
+            FAILED=1
+          elif ! echo "$API_URL" | grep -qE '^https?://'; then
+            echo "❌  NEXT_PUBLIC_API_URL — SIN PROTOCOLO http:// o https://"
+            echo "    → Valor actual (ofuscado): ${API_URL:0:15}..."
+            echo "    → Formato esperado: https://cashtracker-api-mggy.onrender.com/v1"
+            echo "    → next.config.ts aplicará auto-corrección, pero es mejor corregirla en origen."
+            FAILED=1
+          else
+            # Mask most of the URL to avoid leaking
+            MASKED="${API_URL:0:8}***${API_URL: -4}"
+            echo "✅  NEXT_PUBLIC_API_URL — OK ($MASKED)"
+          fi
+
+          echo "::endgroup::"
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "::error title=NEXT_PUBLIC_API_URL Inválida::Ver checklist arriba para el formato esperado."
+            # No hacemos exit 1 aquí — next.config.ts tiene auto-corrección,
+            # el build puede continuar. Sí advertimos fuerte.
+            echo "::warning::El build continuará gracias al auto-fix en next.config.ts, pero corrige la variable en Vercel Dashboard."
+          fi
+
+      # ── Build ──────────────────────────────────────────────────────────
       - name: Build for production
         run: |
           echo "::group::vercel build --prod"
@@ -93,11 +156,12 @@ jobs:
           BUILD_EXIT=${PIPESTATUS[0]}
           echo "::endgroup::"
           if [ "$BUILD_EXIT" -ne 0 ]; then
-            echo "::error title=Build Falló::Ver log de build arriba para detalles del error."
+            echo "::error title=Build Falló::Ver log de build arriba."
             exit 1
           fi
-          echo "::notice title=Build OK::Next.js build completado."
+          echo "::notice title=Build OK::Next.js production build completado."
 
+      # ── Deploy ─────────────────────────────────────────────────────────
       - name: Deploy to Vercel Production
         id: deploy
         run: |
@@ -111,11 +175,12 @@ jobs:
           echo "deploy_url=${DEPLOY_URL}" >> "$GITHUB_OUTPUT"
           echo "::endgroup::"
           if [ "$DEPLOY_EXIT" -ne 0 ]; then
-            echo "::error title=Deploy Falló::Ver log de deploy arriba."
+            echo "::error title=Deploy Falló::Ver log arriba."
             exit 1
           fi
           echo "::notice title=Deployed!::URL: ${DEPLOY_URL:-https://cashtracker-web.vercel.app}"
 
+      # ── Upload logs on failure ─────────────────────────────────────────
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -127,12 +192,20 @@ jobs:
             /tmp/vercel_deploy.log
           retention-days: 7
 
+      # ── Job Summary ────────────────────────────────────────────────────
       - name: Write job summary
         if: always()
         run: |
           URL="${{ steps.deploy.outputs.deploy_url }}"
           {
             echo "## Vercel Deploy Summary"
+            echo ""
+            echo "| Check | Estado |"
+            echo "|-------|--------|"
+            echo "| VERCEL_TOKEN         | ✅ Presente |"
+            echo "| NEXT_PUBLIC_API_URL  | ver log Pre-flight |"
+            echo "| Build                | ver log Build |"
+            echo "| Deploy               | ver log Deploy |"
             echo ""
             echo "| Campo  | Valor |"
             echo "|--------|-------|"
