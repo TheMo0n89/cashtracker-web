@@ -140,19 +140,17 @@ jobs:
           echo "::endgroup::"
 
           if [ "$FAILED" -ne 0 ]; then
-            echo "::error title=NEXT_PUBLIC_API_URL Inválida::Ver checklist arriba para el formato esperado."
-            # No hacemos exit 1 aquí — next.config.ts tiene auto-corrección,
-            # el build puede continuar. Sí advertimos fuerte.
-            echo "::warning::El build continuará gracias al auto-fix en next.config.ts, pero corrige la variable en Vercel Dashboard."
+            echo "::warning title=NEXT_PUBLIC_API_URL::Protocolo faltante o formato mejorable. next.config.ts aplicará auto-corrección."
           fi
 
       # ── Build & Deploy to Vercel (Cloud Build) ─────────────────────────
       - name: Build & Deploy to Vercel Production
         id: deploy
         run: |
-          echo "::group::npx vercel --prod"
+          echo "::group::npx vercel --prod --yes"
           npx vercel \
             --prod \
+            --yes \
             --token="${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee /tmp/vercel_deploy.log
           DEPLOY_EXIT=${PIPESTATUS[0]}
           echo "::endgroup::"
