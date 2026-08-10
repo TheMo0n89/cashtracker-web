@@ -146,30 +146,12 @@ jobs:
             echo "::warning::El build continuará gracias al auto-fix en next.config.ts, pero corrige la variable en Vercel Dashboard."
           fi
 
-      # ── Build ──────────────────────────────────────────────────────────
-      - name: Build for production
-        run: |
-          echo "::group::vercel build --prod"
-          npx vercel build \
-            --prod \
-            --token="${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee /tmp/vercel_build.log
-          BUILD_EXIT=${PIPESTATUS[0]}
-          echo "::endgroup::"
-          echo "=== VERCEL BUILD LOG ==="
-          cat /tmp/vercel_build.log
-          if [ "$BUILD_EXIT" -ne 0 ]; then
-            echo "::error title=Build Falló::Ver log de build arriba."
-            exit 1
-          fi
-          echo "::notice title=Build OK::Next.js production build completado."
-
-      # ── Deploy ─────────────────────────────────────────────────────────
-      - name: Deploy to Vercel Production
+      # ── Build & Deploy to Vercel (Cloud Build) ─────────────────────────
+      - name: Build & Deploy to Vercel Production
         id: deploy
         run: |
-          echo "::group::vercel deploy --prebuilt --prod"
-          npx vercel deploy \
-            --prebuilt \
+          echo "::group::npx vercel --prod"
+          npx vercel \
             --prod \
             --token="${{ secrets.VERCEL_TOKEN }}" 2>&1 | tee /tmp/vercel_deploy.log
           DEPLOY_EXIT=${PIPESTATUS[0]}
